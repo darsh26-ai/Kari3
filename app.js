@@ -23,7 +23,8 @@ let game = {
 
     currentBidderId: null,
 
-    currentPartnerId: null,
+    // Multiple partners are now supported
+    currentPartnerIds: [],
 
     currentBid: 275,
 
@@ -307,8 +308,14 @@ function loadGame() {
     currentBidderId:
         parsed.currentBidderId || null,
 
-    currentPartnerId:
-        parsed.currentPartnerId || null,
+    currentPartnerIds:
+    Array.isArray(parsed.currentPartnerIds)
+        ? parsed.currentPartnerIds
+        : (
+            parsed.currentPartnerId
+                ? [parsed.currentPartnerId]
+                : []
+        ),
 
     currentBid:
         Number(parsed.currentBid) || 275,
@@ -1128,19 +1135,12 @@ function selectBidder(playerId) {
 
 
     /*
-     * A previous partner cannot remain selected
-     * if the bidder changes.
+     * A bidder cannot be a partner.
      */
-
-    if (
-        game.currentPartnerId ===
-        playerId
-    ) {
-
-        game.currentPartnerId =
-            null;
-
-    }
+    game.currentPartnerIds =
+        game.currentPartnerIds.filter(
+            id => id !== playerId
+        );
 
 
     saveGame();
@@ -1292,7 +1292,7 @@ function updateStartScoringButton() {
 
     button.disabled =
         !game.currentBidderId ||
-        game.players.length < 2;
+        game.players.length < 1;
 }
 
 
@@ -1459,6 +1459,22 @@ function renderScoreInputs() {
             input.dataset.playerId =
                 player.id;
 
+             /*
+             * Automatically calculate score
+             * when WIN/LOSS exists.
+             */
+            if (game.currentBidResult) {
+            
+                const automaticScores =
+                    calculateAutomaticScores();
+            
+                input.value =
+                    automaticScores[player.id] ?? 0;
+            
+                input.disabled =
+                    true;
+            }
+           
             input.setAttribute(
                 "aria-label",
                 `Score for ${player.name}`
@@ -1498,6 +1514,196 @@ function renderScoreInputs() {
     );
 }
 
+/* =========================================================
+   AUTOMATIC SCORE CALCULATION
+========================================================= */
+
+function calculateAutomaticScores() {
+
+    const scores = {};
+
+
+    /*
+     * Start every player at zero.
+     */
+    game.players.forEach(player => {
+
+        scores[player.id] = 0;
+
+    });
+
+
+    const bidderId =
+        game.currentBidderId;
+
+    const partnerIds =
+        game.currentPartnerIds;
+
+    const bid =
+        Number(game.currentBid);
+
+    const result =
+        game.currentBidResult;
+
+
+    /*
+     * We cannot calculate until all
+     * required information exists.
+     */
+    if (
+        !bidderId ||
+        !bid ||
+        !result
+    ) {
+
+        return scores;
+
+    }
+
+
+    /* =====================================================
+       WIN
+       =====================================================
+
+       Bidder  = +2 × bid
+       Partner = +bid
+       Others  = 0
+    ===================================================== */
+
+    if (result === "win") {
+
+        scores[bidderId] =
+            bid * 2;
+
+
+        partnerIds.forEach(
+            partnerId => {
+
+                /*
+                 * Safety check:
+                 * bidder can never receive
+                 * partner points.
+                 */
+                if (
+                    partnerId !==
+                    bidderId
+                ) {
+
+                    scores[partnerId] =
+                        bid;
+
+                }
+
+            }
+        );
+
+    }
+
+
+    /* =====================================================
+       LOSS
+       =====================================================
+
+       Bidder       = -bid
+       Partners     = 0
+       Non-partners = +bid
+    ===================================================== */
+
+    else if (result === "loss") {
+
+        scores[bidderId] =
+            -bid;
+
+
+        game.players.forEach(
+            player => {
+
+                const isBidder =
+                    player.id ===
+                    bidderId;
+
+                const isPartner =
+                    partnerIds.includes(
+                        player.id
+                    );
+
+
+                if (
+                    !isBidder &&
+                    !isPartner
+                ) {
+
+                    scores[player.id] =
+                        bid;
+
+                }
+
+            }
+        );
+
+    }
+
+
+    return scores;
+}
+
+/* =========================================================
+   DISPLAY AUTOMATIC SCORES
+========================================================= */
+
+function displayAutomaticScores() {
+
+    const scores =
+        calculateAutomaticScores();
+
+
+    document
+        .querySelectorAll(
+            ".score-input"
+        )
+        .forEach(input => {
+
+            const playerId =
+                input.dataset.playerId;
+
+
+            input.value =
+                scores[playerId] ?? 0;
+
+
+            /*
+             * Automatically calculated scores
+             * are locked.
+             */
+            input.disabled = true;
+
+            input.classList.remove(
+                "editing"
+            );
+
+        });
+
+
+    /*
+     * Show the score section.
+     */
+    const scoreSection =
+        document.getElementById(
+            "scoringSection"
+        );
+
+
+    if (scoreSection) {
+
+        scoreSection.classList.add(
+            "scores-calculated"
+        );
+
+    }
+
+
+    updateSaveRoundButton();
+}
 
 /* =========================================================
    SAVE ROUND
@@ -1527,6 +1733,25 @@ function saveRoundScores() {
     }
 
 
+    if (!game.currentBidResult) {
+
+        showScoreError(
+            "Please select WIN or LOSS."
+        );
+
+        return;
+    }
+
+
+    /*
+     * Read the values from the score boxes.
+     *
+     * These will normally be the automatically
+     * calculated scores.
+     *
+     * If the user used Edit Score, these may
+     * contain manually corrected values.
+     */
     const inputs =
         document.querySelectorAll(
             ".score-input"
@@ -1553,6 +1778,7 @@ function saveRoundScores() {
                 "var(--red)";
 
             return;
+
         }
 
 
@@ -1570,6 +1796,7 @@ function saveRoundScores() {
                 "var(--red)";
 
             return;
+
         }
 
 
@@ -1583,64 +1810,66 @@ function saveRoundScores() {
 
     });
 
-   if (!game.currentPartnerId) {
-   
-       showMessage(
-           "partnerSelectionMessage",
-           "Please select a partner for this round.",
-           "error"
-       );
-   
-       return;
-   }
-   
-   
-   if (!game.currentBidResult) {
-   
-       showScoreError(
-           "Please select whether the bidder WON or LOST the bid."
-       );
-   
-       return;
-   }
 
     if (hasInvalid) {
 
         showScoreError(
-            "Please enter a score for every player."
+            "Please make sure every player has a valid score."
         );
 
         return;
     }
 
-   const round = {
 
-       roundNumber:
-           game.rounds.length + 1,
-   
-       bidderId:
-           game.currentBidderId,
-   
-       bid:
-           game.currentBid,
-   
-       scores:
-           scores,
-   
-       timestamp:
-           new Date().toISOString()
-   
-   };
-    
+    /*
+     * Save the complete round.
+     */
+    const round = {
 
-    game.rounds.push(round);
+        roundNumber:
+            game.rounds.length + 1,
+
+        bidderId:
+            game.currentBidderId,
+
+        partnerIds:
+            [
+                ...game.currentPartnerIds
+            ],
+
+        bid:
+            Number(game.currentBid),
+
+        result:
+            game.currentBidResult,
+
+        scores:
+            scores,
+
+        timestamp:
+            new Date().toISOString()
+
+    };
+
+
+    /*
+     * Add round to history.
+     */
+    game.rounds.push(
+        round
+    );
 
 
     saveGame();
 
     playSaveSound();
 
+
+    /*
+     * Show updated scoreboard.
+     */
     renderScoreboard();
+
 
     showToast(
         `Round ${round.roundNumber} saved successfully!`,
@@ -1648,19 +1877,20 @@ function saveRoundScores() {
     );
 
 
-    /* Prepare next round */
-
+    /*
+     * Start fresh round.
+     */
     game.currentBidderId =
-    null;
+        null;
 
-   game.currentPartnerId =
-       null;
-   
-   game.currentBid =
-       275;
-   
-   game.currentBidResult =
-       null;
+    game.currentPartnerIds =
+        [];
+
+    game.currentBid =
+        275;
+
+    game.currentBidResult =
+        null;
 
 
     saveGame();
@@ -1672,9 +1902,19 @@ function saveRoundScores() {
 
     renderBidders();
 
+    renderPartners();
+
     updateQuickBidButtons();
 
     updateStartScoringButton();
+
+    updateSaveRoundButton();
+
+    updateRoundInformation();
+
+    updateBidResultUI();
+
+    renderScoreInputs();
 
 
     document
@@ -1691,9 +1931,6 @@ function saveRoundScores() {
         )
         .textContent =
         game.rounds.length + 1;
-
-
-    renderScoreInputs();
 
 
     setTimeout(
@@ -1721,10 +1958,64 @@ function updateSaveRoundButton() {
     }
 
 
-    button.disabled =
-        !game.currentBidderId ||
-        !game.currentPartnerId ||
-        !game.currentBidResult;
+    function updateSaveRoundButton() {
+
+       const button =
+           document.getElementById(
+               "saveRoundButton"
+           );
+   
+   
+       if (!button) {
+           return;
+       }
+   
+   
+       button.disabled =
+           !game.currentBidderId ||
+           !game.currentBidResult;
+   }
+}
+
+/* =========================================================
+   EDIT SCORE
+========================================================= */
+
+function enableScoreEditing() {
+
+    document
+        .querySelectorAll(
+            ".score-input"
+        )
+        .forEach(input => {
+
+            input.disabled = false;
+
+            input.classList.add(
+                "editing"
+            );
+
+        });
+
+
+    showToast(
+        "✏️ Scores unlocked. You can edit them now.",
+        "✏️"
+    );
+}
+
+const editScoreButton =
+    document.getElementById(
+        "editScoreButton"
+    );
+
+if (editScoreButton) {
+
+    editScoreButton.addEventListener(
+        "click",
+        enableScoreEditing
+    );
+
 }
 
 /* =========================================================
@@ -2169,18 +2460,24 @@ function closeResetModal() {
 
 function resetGame() {
 
-    game = {
-
-        players: [],
-
-        rounds: [],
-
-        currentBidderId: null,
-
-        currentBid: 275,
-
-        soundEnabled:
-            game.soundEnabled
+      game = {
+   
+       players: [],
+   
+       rounds: [],
+   
+       currentBidderId: null,
+   
+       currentPartnerIds: [],
+   
+       currentBid: 275,
+   
+       currentBidResult: null,
+   
+       soundEnabled:
+           game.soundEnabled
+   
+   };
 
     };
 
@@ -2528,6 +2825,11 @@ function renderPartners() {
             player.id ===
             game.currentBidderId;
 
+        const isSelectedPartner =
+            game.currentPartnerIds.includes(
+                player.id
+            );
+
 
         const button =
             document.createElement("button");
@@ -2538,10 +2840,10 @@ function renderPartners() {
             "partner-card";
 
 
-        if (
-            game.currentPartnerId ===
-            player.id
-        ) {
+        /*
+         * Highlight every selected partner.
+         */
+        if (isSelectedPartner) {
 
             button.classList.add(
                 "selected"
@@ -2550,6 +2852,9 @@ function renderPartners() {
         }
 
 
+        /*
+         * Bidder cannot be selected as partner.
+         */
         if (isBidder) {
 
             button.classList.add(
@@ -2627,70 +2932,107 @@ function renderPartners() {
 
 function selectPartner(playerId) {
 
+    /*
+     * Bidder cannot be a partner.
+     */
     if (
         playerId ===
         game.currentBidderId
     ) {
-
         return;
     }
 
 
-    game.currentPartnerId =
-        playerId;
+    /*
+     * If already selected,
+     * remove the player.
+     */
+    if (
+        game.currentPartnerIds.includes(
+            playerId
+        )
+    ) {
+
+        game.currentPartnerIds =
+            game.currentPartnerIds.filter(
+                id => id !== playerId
+            );
+
+        playClickSound();
+
+        showToast(
+            "Partner removed.",
+            "−"
+        );
+
+    }
+
+    /*
+     * Otherwise add the player.
+     */
+    else {
+
+        game.currentPartnerIds.push(
+            playerId
+        );
+
+        playAddSound();
+
+        showToast(
+            "Partner selected.",
+            "🤝"
+        );
+
+    }
 
 
     saveGame();
-
-    playClickSound();
 
     renderPartners();
 
     updateRoundInformation();
 
-   updateBidResultUI();
+    updateBidResultUI();
 
     updateSaveRoundButton();
-
-    showToast(
-        "Partner selected.",
-        "🤝"
-    );
 }
 
 
 function updatePartnerInfo() {
-
-    const partner =
-        game.players.find(
-            player =>
-                player.id ===
-                game.currentPartnerId
-        );
-
 
     const element =
         document.getElementById(
             "currentPartner"
         );
 
-
     if (!element) {
         return;
     }
 
 
-    if (partner) {
+    const partners =
+        game.players.filter(
+            player =>
+                game.currentPartnerIds.includes(
+                    player.id
+                )
+        );
+
+
+    if (partners.length === 0) {
 
         element.textContent =
-            partner.name;
+            "None";
 
-    } else {
-
-        element.textContent =
-            "Not selected";
+        return;
 
     }
+
+
+    element.textContent =
+        partners
+            .map(player => player.name)
+            .join(" + ");
 }
 
 /* =========================================================
@@ -2708,33 +3050,99 @@ function setBidResult(result) {
     }
 
 
+    /*
+     * Bidder is required.
+     */
+    if (!game.currentBidderId) {
+
+        showToast(
+            "Please select a bidder first.",
+            "!"
+        );
+
+        return;
+    }
+
+
+    /*
+     * Bid is required.
+     */
+    if (!game.currentBid) {
+
+        showToast(
+            "Please select a bid first.",
+            "!"
+        );
+
+        return;
+    }
+
+
+    /*
+     * Save WIN / LOSS.
+     */
     game.currentBidResult =
         result;
 
 
+    /*
+     * Save current state.
+     */
     saveGame();
 
-    playClickSound();
 
+    /*
+     * Update WIN / LOSS buttons.
+     */
     updateBidResultUI();
 
+
+    /*
+     * Update round information.
+     */
     updateRoundInformation();
 
-    updateSaveRoundButton();
+
+    /*
+     * Play appropriate sound.
+     */
+    if (result === "win") {
+
+        playSaveSound();
+
+    } else {
+
+        playTone(
+            300,
+            0.15,
+            "triangle",
+            0.035
+        );
+
+    }
+
+
+    /*
+     * THIS IS THE IMPORTANT PART:
+     *
+     * Automatically calculate and
+     * display the scores.
+     */
+    displayAutomaticScores();
 
 
     if (result === "win") {
 
         showToast(
-            "Bid marked as WIN.",
-            "🏆"
+            "🏆 WIN — scores calculated automatically.",
+            "✓"
         );
 
     } else {
 
         showToast(
-            "Bid marked as LOSS.",
-            "❌"
+            "❌ LOSS — scores calculated automatically.",
+            "✓"
         );
 
     }
@@ -2837,11 +3245,12 @@ function updateRoundInformation() {
         );
 
 
-    const partner =
-        game.players.find(
+    const partners =
+        game.players.filter(
             player =>
-                player.id ===
-                game.currentPartnerId
+                game.currentPartnerIds.includes(
+                    player.id
+                )
         );
 
 
@@ -2876,9 +3285,11 @@ function updateRoundInformation() {
     if (partnerElement) {
 
         partnerElement.textContent =
-            partner
-                ? partner.name
-                : "Not selected";
+            partners.length > 0
+                ? partners
+                    .map(player => player.name)
+                    .join(" + ")
+                : "None";
 
     }
 
