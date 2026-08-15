@@ -383,6 +383,35 @@ function setupEvents() {
             "saveRoundButton"
         );
 
+   const bidWinButton =
+       document.getElementById(
+           "bidWinButton"
+       );
+   
+   const bidLossButton =
+       document.getElementById(
+           "bidLossButton"
+       );
+   
+   
+   bidWinButton.addEventListener(
+       "click",
+       () => {
+   
+           setBidResult("win");
+   
+       }
+   );
+   
+   
+   bidLossButton.addEventListener(
+       "click",
+       () => {
+   
+           setBidResult("loss");
+   
+       }
+   );   
     const resetButton =
         document.getElementById(
             "resetGameButton"
@@ -1089,15 +1118,38 @@ function selectBidder(playerId) {
     game.currentBidderId =
         playerId;
 
+
+    /*
+     * A previous partner cannot remain selected
+     * if the bidder changes.
+     */
+
+    if (
+        game.currentPartnerId ===
+        playerId
+    ) {
+
+        game.currentPartnerId =
+            null;
+
+    }
+
+
     saveGame();
 
     playBidSound();
 
     renderBidders();
 
+    renderPartners();
+
     updateBidSummary();
 
+    updateRoundInformation();
+
     updateStartScoringButton();
+
+    updateSaveRoundButton();
 }
 
 
@@ -1282,23 +1334,21 @@ function startScoringRound() {
         game.rounds.length + 1;
 
 
-    document
-        .getElementById(
-            "currentBidder"
-        )
-        .textContent =
-        bidder.name;
+    /*
+     * The partner and WIN/LOSS selections
+     * are carried from the bidding screen
+     * into the scoring screen.
+     */
 
+    updateRoundInformation();
 
-    document
-        .getElementById(
-            "currentBid"
-        )
-        .textContent =
-        game.currentBid;
+    renderPartners();
 
+    updateBidResultUI();
 
     renderScoreInputs();
+
+    updateSaveRoundButton();
 
     playClickSound();
 
@@ -1525,6 +1575,26 @@ function saveRoundScores() {
 
     });
 
+   if (!game.currentPartnerId) {
+   
+       showMessage(
+           "partnerSelectionMessage",
+           "Please select a partner for this round.",
+           "error"
+       );
+   
+       return;
+   }
+   
+   
+   if (!game.currentBidResult) {
+   
+       showScoreError(
+           "Please select whether the bidder WON or LOST the bid."
+       );
+   
+       return;
+   }
 
     if (hasInvalid) {
 
@@ -1535,26 +1605,25 @@ function saveRoundScores() {
         return;
     }
 
+   const round = {
 
-    const round = {
-
-        roundNumber:
-            game.rounds.length + 1,
-
-        bidderId:
-            game.currentBidderId,
-
-        bid:
-            game.currentBid,
-
-        scores:
-            scores,
-
-        timestamp:
-            new Date().toISOString()
-
-    };
-
+       roundNumber:
+           game.rounds.length + 1,
+   
+       bidderId:
+           game.currentBidderId,
+   
+       bid:
+           game.currentBid,
+   
+       scores:
+           scores,
+   
+       timestamp:
+           new Date().toISOString()
+   
+   };
+    
 
     game.rounds.push(round);
 
@@ -1574,10 +1643,16 @@ function saveRoundScores() {
     /* Prepare next round */
 
     game.currentBidderId =
-        null;
+    null;
 
-    game.currentBid =
-        275;
+   game.currentPartnerId =
+       null;
+   
+   game.currentBid =
+       275;
+   
+   game.currentBidResult =
+       null;
 
 
     saveGame();
@@ -1625,6 +1700,24 @@ function saveRoundScores() {
     );
 }
 
+function updateSaveRoundButton() {
+
+    const button =
+        document.getElementById(
+            "saveRoundButton"
+        );
+
+
+    if (!button) {
+        return;
+    }
+
+
+    button.disabled =
+        !game.currentBidderId ||
+        !game.currentPartnerId ||
+        !game.currentBidResult;
+}
 
 /* =========================================================
    SCOREBOARD
@@ -2401,4 +2494,394 @@ function getInitials(name) {
         parts[0][0] +
         parts[parts.length - 1][0]
     ).toUpperCase();
+}
+
+/* =========================================================
+   PARTNER SELECTION
+========================================================= */
+
+function renderPartners() {
+
+    const container =
+        document.getElementById(
+            "partnerSelection"
+        );
+
+    if (!container) {
+        return;
+    }
+
+    container.innerHTML = "";
+
+
+    game.players.forEach(player => {
+
+        const isBidder =
+            player.id ===
+            game.currentBidderId;
+
+
+        const button =
+            document.createElement("button");
+
+        button.type = "button";
+
+        button.className =
+            "partner-card";
+
+
+        if (
+            game.currentPartnerId ===
+            player.id
+        ) {
+
+            button.classList.add(
+                "selected"
+            );
+
+        }
+
+
+        if (isBidder) {
+
+            button.classList.add(
+                "disabled"
+            );
+
+            button.disabled = true;
+
+        }
+
+
+        const avatar =
+            document.createElement("span");
+
+        avatar.className =
+            "partner-avatar";
+
+        avatar.textContent =
+            getInitials(player.name);
+
+
+        const name =
+            document.createElement("span");
+
+        name.className =
+            "partner-name";
+
+        name.textContent =
+            isBidder
+                ? `${player.name} (Bidder)`
+                : player.name;
+
+
+        const check =
+            document.createElement("span");
+
+        check.className =
+            "partner-check";
+
+        check.textContent =
+            "✓";
+
+
+        button.appendChild(avatar);
+
+        button.appendChild(name);
+
+        button.appendChild(check);
+
+
+        if (!isBidder) {
+
+            button.addEventListener(
+                "click",
+                () => {
+
+                    selectPartner(
+                        player.id
+                    );
+
+                }
+            );
+
+        }
+
+
+        container.appendChild(button);
+
+    });
+
+
+    updatePartnerInfo();
+}
+
+
+function selectPartner(playerId) {
+
+    if (
+        playerId ===
+        game.currentBidderId
+    ) {
+
+        return;
+    }
+
+
+    game.currentPartnerId =
+        playerId;
+
+
+    saveGame();
+
+    playClickSound();
+
+    renderPartners();
+
+    updateRoundInformation();
+
+   updateBidResultUI();
+
+    updateSaveRoundButton();
+
+    showToast(
+        "Partner selected.",
+        "🤝"
+    );
+}
+
+
+function updatePartnerInfo() {
+
+    const partner =
+        game.players.find(
+            player =>
+                player.id ===
+                game.currentPartnerId
+        );
+
+
+    const element =
+        document.getElementById(
+            "currentPartner"
+        );
+
+
+    if (!element) {
+        return;
+    }
+
+
+    if (partner) {
+
+        element.textContent =
+            partner.name;
+
+    } else {
+
+        element.textContent =
+            "Not selected";
+
+    }
+}
+
+/* =========================================================
+   BID RESULT
+========================================================= */
+
+function setBidResult(result) {
+
+    if (
+        result !== "win" &&
+        result !== "loss"
+    ) {
+
+        return;
+    }
+
+
+    game.currentBidResult =
+        result;
+
+
+    saveGame();
+
+    playClickSound();
+
+    updateBidResultUI();
+
+    updateRoundInformation();
+
+    updateSaveRoundButton();
+
+
+    if (result === "win") {
+
+        showToast(
+            "Bid marked as WIN.",
+            "🏆"
+        );
+
+    } else {
+
+        showToast(
+            "Bid marked as LOSS.",
+            "❌"
+        );
+
+    }
+}
+
+
+function updateBidResultUI() {
+
+    const winButton =
+        document.getElementById(
+            "bidWinButton"
+        );
+
+    const lossButton =
+        document.getElementById(
+            "bidLossButton"
+        );
+
+    const resultText =
+        document.getElementById(
+            "currentBidResult"
+        );
+
+
+    if (!winButton || !lossButton) {
+        return;
+    }
+
+
+    winButton.classList.toggle(
+        "selected",
+        game.currentBidResult === "win"
+    );
+
+
+    lossButton.classList.toggle(
+        "selected",
+        game.currentBidResult === "loss"
+    );
+
+
+    if (!resultText) {
+        return;
+    }
+
+
+    resultText.classList.remove(
+        "result-pending",
+        "result-win",
+        "result-loss"
+    );
+
+
+    if (
+        game.currentBidResult ===
+        "win"
+    ) {
+
+        resultText.textContent =
+            "WIN";
+
+        resultText.classList.add(
+            "result-win"
+        );
+
+    } else if (
+        game.currentBidResult ===
+        "loss"
+    ) {
+
+        resultText.textContent =
+            "LOSS";
+
+        resultText.classList.add(
+            "result-loss"
+        );
+
+    } else {
+
+        resultText.textContent =
+            "Not selected";
+
+        resultText.classList.add(
+            "result-pending"
+        );
+    }
+}
+
+/* =========================================================
+   ROUND INFORMATION
+========================================================= */
+
+function updateRoundInformation() {
+
+    const bidder =
+        game.players.find(
+            player =>
+                player.id ===
+                game.currentBidderId
+        );
+
+
+    const partner =
+        game.players.find(
+            player =>
+                player.id ===
+                game.currentPartnerId
+        );
+
+
+    const bidderElement =
+        document.getElementById(
+            "currentBidder"
+        );
+
+
+    const partnerElement =
+        document.getElementById(
+            "currentPartner"
+        );
+
+
+    const bidElement =
+        document.getElementById(
+            "currentBid"
+        );
+
+
+    if (bidderElement) {
+
+        bidderElement.textContent =
+            bidder
+                ? bidder.name
+                : "-";
+
+    }
+
+
+    if (partnerElement) {
+
+        partnerElement.textContent =
+            partner
+                ? partner.name
+                : "Not selected";
+
+    }
+
+
+    if (bidElement) {
+
+        bidElement.textContent =
+            game.currentBid;
+
+    }
+
+
+    updateBidResultUI();
 }
