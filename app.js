@@ -248,7 +248,15 @@ document.addEventListener(
 
         renderBidders();
 
+        renderPartners();
+
         updateBidDisplay();
+
+        updateRoundInformation();
+
+        updateBidResultUI();
+
+        updateSaveRoundButton();
 
         renderScoreInputs();
 
