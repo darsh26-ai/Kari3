@@ -286,26 +286,32 @@ function loadGame() {
 
         game = {
 
-            players:
-                Array.isArray(parsed.players)
-                    ? parsed.players
-                    : [],
+    players:
+        Array.isArray(parsed.players)
+            ? parsed.players
+            : [],
 
-            rounds:
-                Array.isArray(parsed.rounds)
-                    ? parsed.rounds
-                    : [],
+    rounds:
+        Array.isArray(parsed.rounds)
+            ? parsed.rounds
+            : [],
 
-            currentBidderId:
-                parsed.currentBidderId || null,
+    currentBidderId:
+        parsed.currentBidderId || null,
 
-            currentBid:
-                Number(parsed.currentBid) || 275,
+    currentPartnerId:
+        parsed.currentPartnerId || null,
 
-            soundEnabled:
-                parsed.soundEnabled !== false
+    currentBid:
+        Number(parsed.currentBid) || 275,
 
-        };
+    currentBidResult:
+        parsed.currentBidResult || null,
+
+    soundEnabled:
+        parsed.soundEnabled !== false
+
+};
 
     } catch (error) {
 
