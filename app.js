@@ -23,7 +23,11 @@ let game = {
 
     currentBidderId: null,
 
+    currentPartnerId: null,
+
     currentBid: 275,
+
+    currentBidResult: null,
 
     soundEnabled: true
 
